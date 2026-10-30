@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/500.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/public-sans/700.css";
+
+/* Palette drawn from the trade: indigo-dyed yarn, unbleached cotton, madder red for dues,
+   turmeric for warnings, leaf green for money received. */
+@theme {
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #1e2650;
+  --color-ink-2: #2d3770;
+  --color-ink-tint: #e8ebf6;
+  --color-paper: #f4f5f8;
+  --color-surface: #ffffff;
+  --color-rule: #dfe2ea;
+  --color-text: #171b2b;
+  --color-muted: #5f6880;
+  --color-madder: #a3302a;
+  --color-madder-tint: #f8e9e7;
+  --color-turmeric: #9a6400;
+  --color-turmeric-tint: #fbf1dc;
+  --color-leaf: #2b6e4b;
+  --color-leaf-tint: #e4f2ea;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--color-paper); color: var(--color-text); font-family: var(--font-sans); }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--color-ink-2); outline-offset: 2px; }
+input[type="number"]::-webkit-inner-spin-button { opacity: .4; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

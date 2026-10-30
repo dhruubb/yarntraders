@@ -1,0 +1,28 @@
+# Local PostgreSQL for development:  docker compose up -d db
+# Full stack on a VPS:                 docker compose up -d --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yarn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yarn}
+      POSTGRES_DB: yarncrm
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data, ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yarn -d yarncrm"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    profiles: ["full"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://yarn:${POSTGRES_PASSWORD:-yarn}@db:5432/yarncrm
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["127.0.0.1:3000:3000"]
+volumes:
+  pgdata:
