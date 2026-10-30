@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after as afterResponse } from "next/server";
 import { redirect } from "next/navigation";
 import { login, logout, sessionOrNull } from "@/server/auth";
 import { toActionError, type ActionResult, AppError } from "@/server/errors";
@@ -19,7 +20,7 @@ import {
   type PaymentInput,
 } from "@/server/posting";
 import { saveAccountRecord, saveBusinessSettings, savePartyRecord, saveProductRecord, saveUserRecord } from "@/server/masters";
-import { dispatchPending, dispatchSoon, enqueue } from "@/server/notify/outbox";
+import { dispatchPending, enqueue } from "@/server/notify/outbox";
 import { telegramRecentChats } from "@/server/notify/channels";
 import { db } from "@/db";
 import { createBatch, parseSpreadsheet, postBatch, updateRow, type ImportKind } from "@/server/importer";
@@ -31,7 +32,8 @@ async function run<T>(fn: (ctx: Ctx) => Promise<T>, after?: () => void): Promise
   try {
     const data = await fn(s.ctx);
     after?.();
-    dispatchSoon();
+    // Send Telegram alerts after the response; Vercel keeps the function alive until this finishes.
+    afterResponse(() => dispatchPending().then(() => undefined).catch((e) => console.error("alert dispatch failed", e)));
     return { ok: true, data };
   } catch (e) {
     return toActionError(e);

@@ -40,7 +40,7 @@ Then sign in and add, in order: bank accounts (Settings) → products → partie
 
 ```bash
 npx tsx scripts/migrate.ts --test   # once, prepares yarncrm_test
-npm test                            # 45 tests: register math, posting, stock, returns, duplicates, permissions, imports, alerts
+npm test                            # 49 tests: register math, posting, stock, returns, duplicates, permissions, imports, alerts
 ```
 
 ---
@@ -87,6 +87,8 @@ Every create/change/cancel/sign-in is in the **Activity log** with who and when;
 | `ANTHROPIC_API_KEY` | For photo import | Enables reading register photos. Excel/CSV import works without it. |
 | `ANTHROPIC_MODEL` | No | Defaults to `claude-sonnet-5-5`. |
 | `TEST_DATABASE_URL` | For tests | Separate database; tests wipe it. |
+| `DATABASE_SSL` | No | `require` if a remote database fails certificate checks; `disable` for a database without TLS. Default: verify for remote hosts, off for localhost. |
+| `DB_POOL_MAX` | No | Database connections per server instance (3 on Vercel, 10 elsewhere). |
 | `INSECURE_COOKIES` | No | Set `1` only to test a production build over plain `http://localhost`. Never in real deployments. |
 
 No secrets are stored in code. `.env` is git-ignored.
@@ -105,34 +107,86 @@ Alerts are written to an outbox in the same transaction as the event and deliver
 
 ---
 
-## 5. Deploy
+## 5. Deploy: Vercel (app) + Render (database)
 
-### Option A — Vercel + Supabase (recommended, ~₹0–2,000/month)
-1. Create a Supabase project in **Mumbai (ap-south-1)**. Copy the *Session pooler* connection string into `DATABASE_URL`.
-2. From your Mac: `DATABASE_URL=... npm run db:migrate` then `npm run db:create-owner -- ...`.
-3. Push the folder to a private GitHub repo, import it in Vercel, add the environment variables.
-4. `vercel.json` already schedules the overdue alert (04:30 UTC = 10:00 IST) and daily summary (15:30 UTC = 21:00 IST). Vercel sends `CRON_SECRET` automatically.
+The app runs on **Vercel**; PostgreSQL runs on **Render**. Pick the same part of the world for both: Render **Singapore** + Vercel **sin1** (already set in `vercel.json`).
 
-### Option B — Any VPS with Docker
+### 5.1 Put the code on GitHub (once)
+```bash
+cd ~/Desktop/YarnFactoryCRM
+git init -b main
+git add -A
+git status            # check .env, node_modules and .next are NOT listed
+git commit -m "Yarn Register v1"
+```
+Create an **empty private** repo on github.com (no README/licence), then:
+```bash
+git remote add origin https://github.com/<your-username>/yarn-factory-crm.git
+git push -u origin main
+```
+(With the GitHub CLI: `gh repo create yarn-factory-crm --private --source=. --push`.)
+
+### 5.2 Create the database on Render
+1. render.com → **New → Postgres**. Name `yarn-crm-db`, region **Singapore**, PostgreSQL **16**.
+2. Instance type: **Free only for trying it out** — free databases expire 30 days after creation, have no backups, and are deleted if not upgraded within 14 days of expiry. For the client's real data choose a paid instance: it gets point-in-time recovery (3 days on a Hobby workspace, 7 on Pro) and on-demand backups.
+3. When it shows *Available*, open it → **Connect** → copy the **External Database URL**.
+4. Optional but recommended: under **Access Control** you can limit who can connect. Vercel's IPs change, so leave `0.0.0.0/0` unless you're on a Vercel plan with static IPs; the database still needs the password.
+
+### 5.3 Prepare the database from your Mac (once)
+```bash
+cd ~/Desktop/YarnFactoryCRM
+export DATABASE_URL='<External Database URL from Render>'
+npm run db:migrate
+npm run db:create-owner -- --business "Client Business Name" --name "Owner Name" --username owner --state 27
+unset DATABASE_URL
+```
+Never run `npm run db:seed` against Render — it's demo data only (and refuses if data exists).
+If you see a certificate error, run the commands again with `export DATABASE_SSL=require` set too, and add the same variable on Vercel.
+
+### 5.4 Deploy on Vercel
+1. vercel.com → **Add New → Project** → import the GitHub repo. Framework: **Next.js** (auto-detected). Leave build settings as they are — `vercel.json` already sets the build command to run migrations first.
+2. **Environment Variables** (Production):
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | Render **External** Database URL |
+   | `CRON_SECRET` | output of `openssl rand -hex 32` |
+   | `TELEGRAM_BOT_TOKEN` | from @BotFather (optional) |
+   | `ANTHROPIC_API_KEY` | for register photos (optional) |
+   | `DATABASE_SSL` | only if you needed it in 5.3 |
+
+3. **Deploy.** Open the `.vercel.app` URL and sign in with the owner login from 5.3.
+4. Settings → **Domains** to add the client's own domain (HTTPS is automatic).
+
+After this, every `git push` to `main` redeploys automatically, and new database migrations run during the production build. Preview deploys (other branches) skip migrations; if you add `DATABASE_URL` to Preview too, previews will read and write the **live** data, so only do that knowingly.
+
+### 5.5 What runs on a schedule
+`vercel.json` schedules (times in UTC; IST = UTC + 5:30):
+- 04:30 → overdue-payment alert (~10:00 IST)
+- 15:30 → daily summary (~21:00 IST)
+- 07:00 → retry any Telegram alerts that failed
+
+On the Hobby plan, Vercel runs each job once a day somewhere within that hour. Alerts for bills and payments are also sent immediately when they're saved.
+
+### 5.6 Backups
+- Paid Render databases have point-in-time recovery (3 days on Hobby workspaces, 7 on Pro) and on-demand backups from the database's **Recovery** page (kept 7 days). That's short, so also keep your own copies:
+- From your Mac, weekly or before big changes (needs `pg_dump` 16+: `brew install postgresql@16`):
+  ```bash
+  DATABASE_URL='<External URL>' npm run db:backup     # writes backups/yarncrm-<date>.sql.gz
+  ```
+- Restore into an empty database: `gunzip -c backups/yarncrm-….sql.gz | psql "<URL>"`.
+
+### 5.7 Limits to know
+- Uploads are capped at about 4.5 MB on Vercel. Register photos are resized in the browser before upload; Excel/CSV files over 4.5 MB should be split.
+- Login lockout after wrong passwords is tracked per server instance, so it's softer on Vercel than on a single server.
+
+### Alternative: everything on a VPS with Docker
 ```bash
 cp .env.example .env   # set CRON_SECRET, TELEGRAM_BOT_TOKEN, POSTGRES_PASSWORD
 docker compose --profile full up -d --build
 docker compose exec app npm run db:create-owner -- --business "…" --name "…" --username owner
 ```
-Put Caddy or Nginx in front for HTTPS. Add to crontab (server in IST, or adjust):
-```
-30 10 * * * cd /srv/YarnFactoryCRM && docker compose exec -T app npm run cron -- overdue
-0 21  * * * cd /srv/YarnFactoryCRM && docker compose exec -T app npm run cron -- daily-summary
-*/10 * * * * cd /srv/YarnFactoryCRM && docker compose exec -T app npm run cron -- dispatch
-0 23  * * * cd /srv/YarnFactoryCRM && npm run db:backup
-```
-
-### Backups
-- `npm run db:backup` writes a compressed `pg_dump` to `backups/` and keeps 30 days. Copy that folder off the server (rclone to Google Drive works well).
-- Restore: `gunzip -c backups/yarncrm-YYYY-MM-DD-HHMM.sql.gz | psql "$DATABASE_URL"` into an empty database.
-- Supabase also keeps daily backups on paid plans. Test a restore once before going live.
-
----
+Put Caddy or Nginx in front for HTTPS and add crontab entries for `npm run cron -- overdue|daily-summary|dispatch` and `npm run db:backup`.
 
 ## 6. Importing old data
 

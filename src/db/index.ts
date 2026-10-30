@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, types } from "pg";
 import * as schema from "./schema";
+import { poolConfig } from "./config";
 
 // Return DATE columns as plain 'YYYY-MM-DD' strings (no timezone shifting).
 types.setTypeParser(1082, (v) => v);
@@ -19,7 +20,7 @@ function connectionString() {
 
 export function getPool(): Pool {
   if (!globalForDb.__ycrmPool) {
-    globalForDb.__ycrmPool = new Pool({ connectionString: connectionString(), max: 10 });
+    globalForDb.__ycrmPool = new Pool(poolConfig(connectionString()));
   }
   return globalForDb.__ycrmPool;
 }

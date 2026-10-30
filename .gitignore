@@ -1,7 +1,23 @@
+# dependencies and builds
 node_modules
 .next
-.env
-.env.local
-backups/
+out
 *.tsbuildinfo
 next-env.d.ts
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+
+# local data
+backups/
+*.sql.gz
+
+# tools and OS
+.vercel
+.DS_Store
+*.log
+coverage
+.idea
+.vscode

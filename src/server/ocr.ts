@@ -29,7 +29,7 @@ export async function readRegisterPhoto(image: Buffer, mediaType: string, kind: 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new AppError("Register reading is not set up: add ANTHROPIC_API_KEY to the server environment.");
   if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mediaType)) throw new AppError("Upload a JPG, PNG or WEBP photo");
-  if (image.length > 5 * 1024 * 1024) throw new AppError("Photo is larger than 5 MB. Take it at a lower resolution.");
+  if (image.length > 4.4 * 1024 * 1024) throw new AppError("Photo is larger than 4.4 MB. Take it at a lower resolution or crop to one page.");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
